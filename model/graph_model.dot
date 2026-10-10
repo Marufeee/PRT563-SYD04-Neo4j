@@ -1,0 +1,45 @@
+digraph G {
+  graph [rankdir=LR, splines=true, nodesep=0.55, ranksep=1.1, fontname="Helvetica", bgcolor="white", pad=0.3,
+         label=<<B>Neo4j graph data model - Retail inventory (Sydney Group 04)</B><BR/><FONT POINT-SIZE="11">Circles = node labels with key properties. Arrows = relationship types; properties shown in braces. Dashed = analytics relationships created in Tasks 4-5.</FONT>>, labelloc=t, fontsize=18];
+  node [shape=circle, style=filled, fontname="Helvetica", fontsize=11, penwidth=1.5, fixedsize=true, width=1.9];
+  edge [fontname="Helvetica", fontsize=9.5, color="#555555", arrowsize=0.8];
+
+  Category [fillcolor="#FDE68A", color="#B45309", label=<<B>Category</B><BR/><FONT POINT-SIZE="9">categoryId (key)<BR/>name</FONT>>];
+  Product  [fillcolor="#FCA5A5", color="#B91C1C", width=2.1, label=<<B>Product</B><BR/><FONT POINT-SIZE="9">productId (key)<BR/>sku, name<BR/>retailPrice, isActive</FONT>>];
+  Supplier [fillcolor="#C4B5FD", color="#6D28D9", label=<<B>Supplier</B><BR/><I>+ :SupplySource</I><BR/><FONT POINT-SIZE="9">supplierId (key), sourceId<BR/>name, abn<BR/>phoneNumbers[ ]</FONT>>];
+  Agreement [fillcolor="#DDD6FE", color="#6D28D9", label=<<B>SupplyAgreement</B><BR/><FONT POINT-SIZE="9">agreementId (key)<BR/>supplyPrice, leadTimeDays<BR/>minOrderQty, isPreferred</FONT>>];
+  PO       [fillcolor="#BFDBFE", color="#1D4ED8", label=<<B>PurchaseOrder</B><BR/><FONT POINT-SIZE="9">poId (key), poNumber<BR/>orderDate, expectedDate<BR/>status</FONT>>];
+  Location [fillcolor="#A7F3D0", color="#047857", width=2.5, label=<<B>Location</B><BR/><I>:Store | :Warehouse</I><BR/><I>(Warehouse is also<BR/>:SupplySource)</I><BR/><FONT POINT-SIZE="9">locationId (key), code, name<BR/>region / storageCapacityPallets</FONT>>];
+  Employee [fillcolor="#FBCFE8", color="#BE185D", width=2.2, label=<<B>Employee</B><BR/><I>:Manager | :SalesAssistant<BR/>| :WarehouseOperator</I><BR/><FONT POINT-SIZE="9">employeeId (key), email<BR/>jobRole</FONT>>];
+  Customer [fillcolor="#FED7AA", color="#C2410C", label=<<B>Customer</B><BR/><FONT POINT-SIZE="9">customerId (key)<BR/>name, loyaltyTier<BR/>joinDate</FONT>>];
+  Sale     [fillcolor="#BAE6FD", color="#0369A1", label=<<B>Sale</B><BR/><FONT POINT-SIZE="9">saleId (key), receiptNo<BR/>saleDatetime<BR/>paymentMethod</FONT>>];
+  Delivery [fillcolor="#D9F99D", color="#4D7C0F", label=<<B>Delivery</B><BR/><FONT POINT-SIZE="9">deliveryId (key)<BR/>referenceNo<BR/>deliveryDate</FONT>>];
+  Adjust   [fillcolor="#E5E7EB", color="#374151", label=<<B>StockAdjustment</B><BR/><FONT POINT-SIZE="9">adjustmentId (key)<BR/>adjustmentType<BR/>qtyChange, note</FONT>>];
+
+  Product -> Category [label="IN_CATEGORY"];
+  Category -> Category [label="SUBCATEGORY_OF"];
+  Supplier -> Agreement [label="OFFERS"];
+  Agreement -> Product [label="FOR_PRODUCT"];
+  PO -> Agreement [label="ORDERS\n{lineNo, qtyOrdered,\nqtyReceived, unitCost}", color="#1D4ED8", fontcolor="#1D4ED8", penwidth=1.6];
+  PO -> Supplier [label="PLACED_WITH"];
+  PO -> Location [label="DELIVER_TO"];
+  PO -> Employee [label="RAISED_BY"];
+  Location -> Product [label="STOCKS\n{qtyOnHand, qtyReserved,\nreorderLevel, reorderQty,\nbinCode, lastCountedDate}", color="#047857", fontcolor="#047857", penwidth=1.6];
+  Adjust -> Product [label="ADJUSTS"];
+  Adjust -> Location [label="AT_LOCATION"];
+  Adjust -> Employee [label="MADE_BY"];
+  Delivery -> Supplier [label="SENT_FROM\n(any :SupplySource)"];
+  Delivery -> Location [label="SENT_FROM / RECEIVED_AT"];
+  Delivery -> PO [label="FULFILS (0..1)"];
+  Delivery -> Employee [label="CHECKED_BY"];
+  Delivery -> Product [label="DELIVERED\n{lineNo, qtyDelivered,\nqtyDamaged}", color="#4D7C0F", fontcolor="#4D7C0F", penwidth=1.6];
+  Employee -> Location [label="WORKS_AT"];
+  Employee -> Employee [label="REPORTS_TO"];
+  Customer -> Location [label="HOME_STORE (:Store)"];
+  Customer -> Sale [label="MADE"];
+  Sale -> Location [label="SOLD_AT (:Store)"];
+  Sale -> Employee [label="SERVED_BY\n(:SalesAssistant)"];
+  Sale -> Product [label="CONTAINS\n{lineNo, qtySold,\nunitPrice, discountPct}", color="#0369A1", fontcolor="#0369A1", penwidth=1.6];
+  Product -> Product [label="BOUGHT_WITH {weight}", style=dashed, color="#9CA3AF", fontcolor="#6B7280", dir=none];
+  Customer -> Customer [label="SIMILAR_TO {score}", style=dashed, color="#9CA3AF", fontcolor="#6B7280"];
+}
