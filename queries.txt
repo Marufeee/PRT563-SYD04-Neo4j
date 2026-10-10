@@ -1,0 +1,164 @@
+// =====================================================================
+// PRT563 Assessment 4 - Sydney Group 04
+// Task 3: Graph database queries
+// File: queries.txt
+//
+// Four use cases in increasing order of complexity. Run after import.txt.
+// Expected results are listed in README.md.
+// =====================================================================
+
+
+// ---------------------------------------------------------------------
+// USE CASE 1 (simple) - Morning replenishment check at Liverpool
+//
+// Scenario: before opening, the Liverpool store manager needs every
+// product on her shelves at or below its reorder level, with its bin code,
+// so she can request a transfer from the distribution centre.
+//
+// Techniques: one relationship pattern, filtering on relationship
+// properties, derived values computed at read time (available quantity
+// and shortfall are never stored - BR12).
+//
+// This is the graph version of Assessment 2 use case 1. In SQL the stock
+// position was a row in STOCK_ITEM; here it is the STOCKS relationship
+// itself, so the query reads as "Liverpool stocks product".
+// ---------------------------------------------------------------------
+MATCH (store:Store {name: 'Liverpool Store'})-[s:STOCKS]->(p:Product)
+WHERE s.qtyOnHand <= s.reorderLevel
+  AND s.binCode IS NOT NULL
+RETURN p.sku                        AS sku,
+       p.name                       AS product,
+       s.binCode                    AS bin,
+       s.qtyOnHand                  AS onHand,
+       s.qtyReserved                AS reserved,
+       s.qtyOnHand - s.qtyReserved  AS available,
+       s.reorderLevel               AS reorderLevel,
+       s.reorderLevel - s.qtyOnHand AS shortfall
+ORDER BY shortfall DESC, sku;
+
+
+// ---------------------------------------------------------------------
+// USE CASE 2 (moderate) - September trading by store and department
+//
+// Scenario: at the monthly trading review the operations manager wants
+// September revenue for each store, rolled up to the top-level
+// department (Grocery, Household, Personal Care) rather than the
+// sub-category a product is filed under.
+//
+// Techniques: a five-node path, a variable-length traversal of the
+// recursive SUBCATEGORY_OF hierarchy (*0.. so that a product filed
+// directly under a top-level category is still counted), a negative
+// pattern to find the root, a date range served by the sale_datetime
+// index, and aggregation. In SQL the hierarchy needed a self-join that
+// only works for a fixed depth; *0.. works at any depth.
+// ---------------------------------------------------------------------
+MATCH (store:Store)<-[:SOLD_AT]-(s:Sale)-[l:CONTAINS]->(p:Product)
+      -[:IN_CATEGORY]->(:Category)-[:SUBCATEGORY_OF*0..]->(dept:Category)
+WHERE NOT (dept)-[:SUBCATEGORY_OF]->()
+  AND s.saleDatetime >= localdatetime('2026-09-01T00:00')
+  AND s.saleDatetime <  localdatetime('2026-10-01T00:00')
+RETURN store.name                AS store,
+       dept.name                 AS department,
+       count(DISTINCT s)         AS transactions,
+       sum(l.qtySold)            AS unitsSold,
+       round(sum(l.qtySold * l.unitPrice * (1 - l.discountPct)), 2) AS revenueAud
+ORDER BY store, revenueAud DESC;
+
+
+// ---------------------------------------------------------------------
+// USE CASE 3 (complex, multi-hop) - Chain-wide replenishment routing
+//
+// Scenario: the supply planner needs one list of every product that is at
+// or below its reorder level in at least one store, and a decision for
+// each: transfer from the distribution centre, transfer and re-order the
+// DC, wait for a purchase order already on its way, or raise a new one.
+//
+// Techniques: several MATCH stages chained with WITH, aggregation into
+// lists, traversal through the reified SupplyAgreement node to reach the
+// preferred supplier, OPTIONAL MATCH so products with no open order are
+// kept, and a CASE expression that turns the graph into a decision.
+// The SQL equivalent needs four correlated subqueries.
+// ---------------------------------------------------------------------
+// Stage 1: store-level shortages, aggregated per product
+MATCH (store:Store)-[s:STOCKS]->(p:Product)
+WHERE s.qtyOnHand <= s.reorderLevel
+WITH p, store, s ORDER BY store.code
+WITH p,
+     collect(store.code + ' (' + toString(s.qtyOnHand) + '/' + toString(s.reorderLevel) + ')') AS shortAt,
+     sum(s.reorderQty) AS qtyNeeded
+// Stage 2: what the distribution centre can spare
+MATCH (dc:Warehouse)-[w:STOCKS]->(p)
+WITH p, shortAt, qtyNeeded,
+     w.qtyOnHand - w.qtyReserved AS dcAvailable, w.reorderLevel AS dcReorderLevel
+// Stage 3: preferred supplier, through the SupplyAgreement node
+MATCH (sup:Supplier)-[:OFFERS]->(a:SupplyAgreement {isPreferred: true})-[:FOR_PRODUCT]->(p)
+// Stage 4: anything already on order (any supplier), still outstanding
+OPTIONAL MATCH (po:PurchaseOrder)-[o:ORDERS]->(:SupplyAgreement)-[:FOR_PRODUCT]->(p)
+WHERE po.status IN ['OPEN', 'PARTIAL']
+WITH p, shortAt, qtyNeeded, dcAvailable, dcReorderLevel, sup, a,
+     sum(o.qtyOrdered - o.qtyReceived) AS qtyInbound,
+     collect(DISTINCT po.poNumber)     AS openOrders
+RETURN p.sku            AS sku,
+       p.name           AS product,
+       shortAt,
+       qtyNeeded,
+       dcAvailable,
+       qtyInbound,
+       openOrders,
+       sup.name         AS preferredSupplier,
+       a.leadTimeDays   AS leadTimeDays,
+       CASE
+         WHEN dcAvailable >= qtyNeeded AND dcAvailable - qtyNeeded >= dcReorderLevel
+              THEN 'TRANSFER FROM DC'
+         WHEN dcAvailable >= qtyNeeded AND qtyInbound > 0
+              THEN 'TRANSFER - DC PO ALREADY OPEN'
+         WHEN dcAvailable >= qtyNeeded
+              THEN 'TRANSFER AND RAISE DC PO'
+         WHEN qtyInbound > 0
+              THEN 'WAIT FOR OPEN PO'
+         ELSE 'RAISE PO NOW'
+       END AS action
+ORDER BY size(shortAt) DESC, sku;
+
+
+// ---------------------------------------------------------------------
+// USE CASE 4 (most complex) - Market-basket analysis for cross-promotion
+//
+// Scenario: marketing wants the product pairs most strongly bought
+// together, to plan shelf adjacency and bundle promotions. Raw
+// co-occurrence favours popular products, so pairs are ranked by lift:
+//   support    = baskets with both / all baskets
+//   confidence = baskets with both / baskets with A   (A -> B)
+//   lift       = support / (P(A) x P(B))   (> 1 means more than chance)
+//
+// Techniques: a self-joining two-hop pattern across every receipt,
+// aggregation with a minimum-support threshold, two CALL subqueries to
+// count each product's own baskets, and arithmetic over three
+// aggregation levels. In SQL this is a self-join of SALE_LINE plus two
+// derived tables.
+// ---------------------------------------------------------------------
+MATCH (s:Sale)
+WITH count(s) AS totalBaskets
+MATCH (a:Product)<-[:CONTAINS]-(s:Sale)-[:CONTAINS]->(b:Product)
+WHERE a.productId < b.productId
+WITH totalBaskets, a, b, count(DISTINCT s) AS together
+WHERE together >= 15
+CALL {
+  WITH a
+  MATCH (a)<-[:CONTAINS]-(x:Sale)
+  RETURN count(DISTINCT x) AS basketsA
+}
+CALL {
+  WITH b
+  MATCH (b)<-[:CONTAINS]-(y:Sale)
+  RETURN count(DISTINCT y) AS basketsB
+}
+RETURN a.name                                             AS productA,
+       b.name                                             AS productB,
+       together                                           AS basketsTogether,
+       round(100.0 * together / totalBaskets, 2)          AS supportPct,
+       round(1.0 * together / basketsA, 3)                AS confidenceAtoB,
+       round(1.0 * together / basketsB, 3)                AS confidenceBtoA,
+       round(1.0 * together * totalBaskets / (basketsA * basketsB), 2) AS lift
+ORDER BY lift DESC
+LIMIT 10;

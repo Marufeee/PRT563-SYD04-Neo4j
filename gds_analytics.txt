@@ -1,0 +1,241 @@
+// =====================================================================
+// PRT563 Assessment 4 - Sydney Group 04
+// Tasks 4 and 5: Graph Data Science analytics
+// File: gds_analytics.txt   (supplementary - not required by the brief)
+//
+// Requires the Graph Data Science plugin, version 2.4 or later
+// (Neo4j Desktop: select the database > Plugins > Graph Data Science).
+// Run after import.txt. Check the version with: RETURN gds.version();
+// =====================================================================
+
+
+// #####################################################################
+// TASK 4 - CENTRALITY
+// Use case: which products hold the shopping network together?
+//
+// Products are linked when customers buy them in the same basket. A
+// product that is central in that network is a "traffic driver": if it
+// runs out, many baskets are affected, and it is the best candidate for
+// end-of-aisle placement. Different centrality algorithms answer
+// different versions of "central", so five are compared.
+// #####################################################################
+
+// 4.1 Build the co-purchase network.
+// One BOUGHT_WITH relationship per product pair bought together in at
+// least 10 receipts; weight = number of receipts. The threshold removes
+// one-off coincidences, which otherwise make the graph almost complete
+// and every product look equally central.
+MATCH (a:Product)<-[:CONTAINS]-(s:Sale)-[:CONTAINS]->(b:Product)
+WHERE a.productId < b.productId
+WITH a, b, count(DISTINCT s) AS together
+WHERE together >= 10
+MERGE (a)-[r:BOUGHT_WITH]->(b)
+SET r.weight = together;
+
+// 4.2 Project it into the GDS catalog (undirected: co-purchase is mutual)
+CALL gds.graph.drop('coPurchase', false) YIELD graphName;
+
+CALL gds.graph.project(
+  'coPurchase',
+  'Product',
+  {BOUGHT_WITH: {orientation: 'UNDIRECTED', properties: 'weight'}}
+)
+YIELD graphName, nodeCount, relationshipCount;
+
+// 4.3 Degree centrality (weighted): how much basket traffic touches a product
+CALL gds.degree.stream('coPurchase', {relationshipWeightProperty: 'weight'})
+YIELD nodeId, score
+RETURN gds.util.asNode(nodeId).name AS product, score AS weightedDegree
+ORDER BY weightedDegree DESC LIMIT 10;
+
+// 4.4 PageRank (weighted): connected to other well-connected products
+CALL gds.pageRank.stream('coPurchase', {
+  relationshipWeightProperty: 'weight', dampingFactor: 0.85, maxIterations: 20
+})
+YIELD nodeId, score
+RETURN gds.util.asNode(nodeId).name AS product, round(score, 4) AS pageRank
+ORDER BY pageRank DESC LIMIT 10;
+
+// 4.5 Betweenness: products that sit on the paths between shopping missions
+CALL gds.betweenness.stream('coPurchase')
+YIELD nodeId, score
+RETURN gds.util.asNode(nodeId).name AS product, round(score, 2) AS betweenness
+ORDER BY betweenness DESC LIMIT 10;
+
+// 4.6 Closeness: fewest hops to every other product
+// (older GDS releases: gds.beta.closeness.stream)
+CALL gds.closeness.stream('coPurchase')
+YIELD nodeId, score
+RETURN gds.util.asNode(nodeId).name AS product, round(score, 4) AS closeness
+ORDER BY closeness DESC LIMIT 10;
+
+// 4.7 Eigenvector (weighted): influence through influential neighbours
+CALL gds.eigenvector.stream('coPurchase', {relationshipWeightProperty: 'weight', maxIterations: 50})
+YIELD nodeId, score
+RETURN gds.util.asNode(nodeId).name AS product, round(score, 4) AS eigenvector
+ORDER BY eigenvector DESC LIMIT 10;
+
+// 4.8 Write all five scores back to the Product nodes for side-by-side comparison
+CALL gds.degree.write('coPurchase',      {relationshipWeightProperty: 'weight', writeProperty: 'cDegree'}) YIELD nodePropertiesWritten;
+CALL gds.pageRank.write('coPurchase',    {relationshipWeightProperty: 'weight', writeProperty: 'cPageRank'}) YIELD nodePropertiesWritten;
+CALL gds.betweenness.write('coPurchase', {writeProperty: 'cBetweenness'}) YIELD nodePropertiesWritten;
+CALL gds.closeness.write('coPurchase',   {writeProperty: 'cCloseness'}) YIELD nodePropertiesWritten;
+CALL gds.eigenvector.write('coPurchase', {relationshipWeightProperty: 'weight', writeProperty: 'cEigenvector'}) YIELD nodePropertiesWritten;
+
+// 4.9 Comparison table, ordered by betweenness
+MATCH (p:Product)
+RETURN p.name AS product,
+       p.cDegree AS weightedDegree,
+       round(p.cPageRank, 3)    AS pageRank,
+       round(p.cBetweenness, 1) AS betweenness,
+       round(p.cCloseness, 3)   AS closeness,
+       round(p.cEigenvector, 3) AS eigenvector
+ORDER BY betweenness DESC LIMIT 12;
+
+// 4.10 Business action: days of stock cover for the five strongest bridge
+// products at each store, based on September's daily sales rate. A
+// bridge product running out breaks baskets across several missions,
+// so these get a higher safety stock than their own sales would suggest.
+MATCH (p:Product)
+WITH p ORDER BY p.cBetweenness DESC LIMIT 5
+MATCH (st:Store)-[s:STOCKS]->(p)
+OPTIONAL MATCH (st)<-[:SOLD_AT]-(sale:Sale)-[l:CONTAINS]->(p)
+WHERE sale.saleDatetime >= localdatetime('2026-09-01T00:00')
+  AND sale.saleDatetime <  localdatetime('2026-10-01T00:00')
+WITH p, st, s, sum(l.qtySold) AS unitsSept
+RETURN p.name AS bridgeProduct,
+       round(p.cBetweenness, 1) AS betweenness,
+       st.name AS store,
+       s.qtyOnHand AS onHand,
+       unitsSept,
+       CASE WHEN unitsSept = 0 THEN null
+            ELSE round(s.qtyOnHand / (unitsSept / 30.0), 1) END AS daysOfCover
+ORDER BY daysOfCover ASC;
+
+// #####################################################################
+// TASK 5 - SIMILARITY
+// Use case: "customers like you also bought" recommendations for the
+// loyalty programme. Customers are compared by the products they buy;
+// the closest peers' purchases become a customer's recommendations.
+// Four approaches are compared on the same customer (Anna Kowalski, id 1).
+// #####################################################################
+
+// 5.1 Project a bipartite Customer -> Product graph.
+// One PURCHASED relationship per customer-product pair; qty = total units.
+CALL gds.graph.drop('custProd', false) YIELD graphName;
+
+MATCH (c:Customer)-[:MADE]->(:Sale)-[l:CONTAINS]->(p:Product)
+WITH c, p, sum(l.qtySold) AS qty
+WITH gds.graph.project('custProd', c, p, {
+       sourceNodeLabels: 'Customer',
+       targetNodeLabels: 'Product',
+       relationshipType: 'PURCHASED',
+       relationshipProperties: {qty: toFloat(qty)}
+     }) AS g
+RETURN g.graphName, g.nodeCount, g.relationshipCount;
+
+// 5.2 Node Similarity - JACCARD (shared products / all products of either)
+// degreeCutoff 5 ignores customers with fewer than 5 distinct products,
+// who otherwise produce misleading perfect scores.
+CALL gds.nodeSimilarity.stream('custProd', {
+  similarityMetric: 'JACCARD', topK: 3, degreeCutoff: 5
+})
+YIELD node1, node2, similarity
+WITH gds.util.asNode(node1) AS c1, gds.util.asNode(node2) AS c2, similarity
+WHERE c1.customerId = 1
+RETURN c2.firstName + ' ' + c2.lastName AS peer, round(similarity, 3) AS jaccard
+ORDER BY jaccard DESC;
+
+// 5.3 Node Similarity - OVERLAP (shared products / the smaller set)
+CALL gds.nodeSimilarity.stream('custProd', {
+  similarityMetric: 'OVERLAP', topK: 3, degreeCutoff: 5
+})
+YIELD node1, node2, similarity
+WITH gds.util.asNode(node1) AS c1, gds.util.asNode(node2) AS c2, similarity
+WHERE c1.customerId = 1
+RETURN c2.firstName + ' ' + c2.lastName AS peer, round(similarity, 3) AS overlap
+ORDER BY overlap DESC;
+
+// 5.4 Node Similarity - COSINE, weighted by quantity bought
+CALL gds.nodeSimilarity.stream('custProd', {
+  similarityMetric: 'COSINE', relationshipWeightProperty: 'qty', topK: 3, degreeCutoff: 5
+})
+YIELD node1, node2, similarity
+WITH gds.util.asNode(node1) AS c1, gds.util.asNode(node2) AS c2, similarity
+WHERE c1.customerId = 1
+RETURN c2.firstName + ' ' + c2.lastName AS peer, round(similarity, 3) AS cosine
+ORDER BY cosine DESC;
+
+// 5.5 Chain-wide view: the most similar customer pairs (Jaccard).
+// topN keeps the 20 highest scores overall; each pair can appear in both
+// directions, so the CASE puts the lower id first and DISTINCT removes repeats.
+CALL gds.nodeSimilarity.stream('custProd', {
+  similarityMetric: 'JACCARD', topK: 3, topN: 20, degreeCutoff: 5
+})
+YIELD node1, node2, similarity
+WITH gds.util.asNode(node1) AS c1, gds.util.asNode(node2) AS c2, similarity
+WITH CASE WHEN c1.customerId < c2.customerId THEN [c1, c2] ELSE [c2, c1] END AS pair,
+     similarity
+RETURN DISTINCT
+       pair[0].firstName + ' ' + pair[0].lastName AS customerA,
+       pair[1].firstName + ' ' + pair[1].lastName AS customerB,
+       round(similarity, 3) AS jaccard
+ORDER BY jaccard DESC LIMIT 5;
+
+// 5.6 K-Nearest Neighbours on spending mix.
+// Each customer gets a 5-element vector: share of spend in Pantry,
+// Snacks, Cleaning, Kitchenware and Haircare. KNN compares shopping
+// *style* rather than exact products.
+MATCH (c:Customer)-[:MADE]->(:Sale)-[l:CONTAINS]->(:Product)-[:IN_CATEGORY]->(cat:Category)
+WITH c, cat.name AS category, sum(l.qtySold * l.unitPrice * (1 - l.discountPct)) AS spend
+WITH c, collect([category, spend]) AS pairs, sum(spend) AS total
+SET c.categoryMix = [k IN ['Pantry', 'Snacks', 'Cleaning', 'Kitchenware', 'Haircare'] |
+                     coalesce(head([x IN pairs WHERE x[0] = k | x[1]]), 0.0) / total];
+
+CALL gds.graph.drop('custMix', false) YIELD graphName;
+
+MATCH (c:Customer) WHERE c.categoryMix IS NOT NULL
+WITH gds.graph.project('custMix', c, null, {
+       sourceNodeLabels: 'Customer',
+       sourceNodeProperties: c {.categoryMix}
+     }) AS g
+RETURN g.graphName, g.nodeCount;
+
+// randomSeed + concurrency 1 make KNN deterministic for the report
+CALL gds.knn.stream('custMix', {
+  nodeProperties: {categoryMix: 'COSINE'}, topK: 3,
+  sampleRate: 1.0, deltaThreshold: 0.0, randomSeed: 42, concurrency: 1
+})
+YIELD node1, node2, similarity
+WITH gds.util.asNode(node1) AS c1, gds.util.asNode(node2) AS c2, similarity
+WHERE c1.customerId = 1
+RETURN c2.firstName + ' ' + c2.lastName AS peer, round(similarity, 4) AS knnCosine,
+       [x IN c2.categoryMix | round(x, 2)] AS peerMix
+ORDER BY knnCosine DESC;
+
+// 5.7 Turn the chosen metric (Jaccard) into recommendations.
+// Write SIMILAR_TO relationships, then recommend what Anna's peers
+// buy that she has never bought, scored by summed peer similarity.
+CALL gds.nodeSimilarity.write('custProd', {
+  similarityMetric: 'JACCARD', topK: 3, degreeCutoff: 5,
+  writeRelationshipType: 'SIMILAR_TO', writeProperty: 'score'
+})
+YIELD nodesCompared, relationshipsWritten;
+
+MATCH (me:Customer {customerId: 1})-[sim:SIMILAR_TO]->(peer:Customer)
+      -[:MADE]->(:Sale)-[:CONTAINS]->(p:Product)
+WHERE NOT EXISTS { (me)-[:MADE]->(:Sale)-[:CONTAINS]->(p) }
+WITH DISTINCT p, peer, sim.score AS score
+RETURN p.name AS recommendedProduct,
+       round(sum(score), 3) AS recommendationScore,
+       collect(peer.firstName + ' ' + peer.lastName) AS boughtBy
+ORDER BY recommendationScore DESC LIMIT 5;
+
+
+// ---------------------------------------------------------------------
+// Clean-up (optional): free GDS memory and remove analytics-only data
+// ---------------------------------------------------------------------
+// CALL gds.graph.drop('coPurchase', false);
+// CALL gds.graph.drop('custProd', false);
+// CALL gds.graph.drop('custMix', false);
+// MATCH ()-[r:BOUGHT_WITH|SIMILAR_TO]->() DELETE r;

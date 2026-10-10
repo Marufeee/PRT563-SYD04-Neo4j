@@ -1,0 +1,86 @@
+
+=== Q1 Liverpool low stock (10 rows)
+   ('GRO-1002', 'Instant Noodles 5pk', 'S2-A2', 6, 2, 4, 12, 6)
+   ('SNK-2007', 'Salsa Dip 300g', 'S2-E25', 10, 0, 10, 14, 4)
+   ('GRO-1004', 'Tinned Tomatoes 400g', 'S2-A4', 15, 0, 15, 18, 3)
+   ('SNK-2001', 'Salted Chips 175g', 'S2-B1', 12, 0, 12, 15, 3)
+   ('GRO-1007', 'Plain Flour 2kg', 'S2-E15', 14, 0, 14, 16, 2)
+   ('KIT-4002', 'Storage Container Set 5pc', 'S2-D2', 6, 1, 5, 8, 2)
+   ('SNK-2005', 'Microwave Popcorn 3pk', 'S2-E23', 9, 0, 9, 10, 1)
+   ('CLN-3002', 'Laundry Powder 2kg', 'S2-C2', 8, 0, 8, 8, 0)
+   ('CLN-3007', 'Scrub Sponges 6pk', 'S2-E30', 16, 0, 16, 16, 0)
+   ('HAI-5007', 'Toothbrush 2pk', 'S2-E39', 10, 0, 10, 10, 0)
+
+=== Q2 Sept revenue by store and department (9 rows)
+   ('Bankstown Store', 'Grocery', 224, 859, 3238.72)
+   ('Bankstown Store', 'Household', 162, 457, 2589.44)
+   ('Bankstown Store', 'Personal Care', 83, 303, 1374.3)
+   ('Liverpool Store', 'Household', 198, 656, 4153.08)
+   ('Liverpool Store', 'Grocery', 250, 962, 3530.26)
+   ('Liverpool Store', 'Personal Care', 103, 323, 1491.6)
+   ('Parramatta Store', 'Grocery', 202, 724, 2856.24)
+   ('Parramatta Store', 'Household', 138, 396, 2293.86)
+   ('Parramatta Store', 'Personal Care', 88, 321, 1517.9)
+
+=== Q3 replenishment routing (16 rows)
+   ('CLN-3007', 'Scrub Sponges 6pk', 3, ['ST-BKT (14/14)', 'ST-LVP (16/16)', 'ST-PAR (11/12)'], 126, 175, 80, 0, None, 'Bright Home Supplies Pty Ltd', 6, 'TRANSFER AND RAISE DC PO')
+   ('GRO-1002', 'Instant Noodles 5pk', 3, ['ST-BKT (8/14)', 'ST-LVP (6/12)', 'ST-PAR (10/14)'], 108, 444, 120, 240, 'PO-2026-0105', 'Harbour Food Wholesale Pty Ltd', 5, 'TRANSFER FROM DC')
+   ('SNK-2001', 'Salted Chips 175g', 3, ['ST-BKT (10/16)', 'ST-LVP (12/15)', 'ST-PAR (9/16)'], 144, 552, 150, 400, 'PO-2026-0105', 'Harbour Food Wholesale Pty Ltd', 5, 'TRANSFER FROM DC')
+   ('GRO-1004', 'Tinned Tomatoes 400g', 2, ['ST-LVP (15/18)', 'ST-PAR (12/18)'], 120, 660, 180, 0, None, 'Harbour Food Wholesale Pty Ltd', 7, 'TRANSFER FROM DC')
+   ('GRO-1007', 'Plain Flour 2kg', 2, ['ST-BKT (11/14)', 'ST-LVP (14/16)'], 90, 178, 80, 0, None, 'Harbour Food Wholesale Pty Ltd', 7, 'TRANSFER FROM DC')
+   ('SNK-2006', 'Corn Chips 200g', 2, ['ST-BKT (10/10)', 'ST-PAR (10/10)'], 60, 337, 80, 0, None, 'Harbour Food Wholesale Pty Ltd', 7, 'TRANSFER FROM DC')
+   ('SNK-2007', 'Salsa Dip 300g', 2, ['ST-LVP (10/14)', 'ST-PAR (12/12)'], 78, 42, 80, 0, None, 'Harbour Food Wholesale Pty Ltd', 5, 'RAISE PO NOW')
+   ('CLN-3002', 'Laundry Powder 2kg', 1, ['ST-LVP (8/8)'], 24, 220, 60, 0, None, 'Bright Home Supplies Pty Ltd', 6, 'TRANSFER FROM DC')
+   ('CLN-3006', 'Bleach 2L', 1, ['ST-BKT (8/10)'], 30, 241, 80, 48, 'PO-2026-0107', 'Bright Home Supplies Pty Ltd', 6, 'TRANSFER FROM DC')
+   ('GRO-1008', 'White Sugar 2kg', 1, ['ST-PAR (14/14)'], 42, 74, 80, 0, None, 'Harbour Food Wholesale Pty Ltd', 6, 'TRANSFER AND RAISE DC PO')
+   ('GRO-1012', 'Coconut Milk 400ml', 1, ['ST-PAR (12/12)'], 36, 77, 80, 120, 'PO-2026-0106', 'Harbour Food Wholesale Pty Ltd', 8, 'TRANSFER - DC PO ALREADY OPEN')
+   ('HAI-5005', 'Deodorant 150ml', 1, ['ST-PAR (11/14)'], 42, 75, 80, 48, 'PO-2026-0108', 'PureCare Personal Products', 6, 'TRANSFER - DC PO ALREADY OPEN')
+   ('HAI-5007', 'Toothbrush 2pk', 1, ['ST-LVP (10/10)'], 30, 170, 80, 0, None, 'PureCare Personal Products', 5, 'TRANSFER FROM DC')
+   ('KIT-4002', 'Storage Container Set 5pc', 1, ['ST-LVP (6/8)'], 18, 128, 40, 0, None, 'Kitchen Essentials Australia', 12, 'TRANSFER FROM DC')
+   ('KIT-4003', 'Aluminium Foil 30m', 1, ['ST-BKT (9/12)'], 36, 219, 80, 0, None, 'Kitchen Essentials Australia', 5, 'TRANSFER FROM DC')
+   ('SNK-2005', 'Microwave Popcorn 3pk', 1, ['ST-LVP (9/10)'], 30, 217, 80, 0, None, 'Harbour Food Wholesale Pty Ltd', 5, 'TRANSFER FROM DC')
+
+=== Q4 basket pairs (together>=15) top 10 by lift (10 rows)
+   ('Toothpaste 110g', 'Toothbrush 2pk', 58, 6.2, 0.784, 0.817, 10.32)
+   ('Plain Flour 2kg', 'White Sugar 2kg', 77, 8.24, 0.856, 0.856, 8.89)
+   ('Corn Chips 200g', 'Salsa Dip 300g', 71, 7.59, 0.826, 0.807, 8.77)
+   ('Aluminium Foil 30m', 'Cling Wrap 60m', 81, 8.66, 0.818, 0.871, 8.23)
+   ('Shampoo 400ml', 'Conditioner 400ml', 76, 8.13, 0.792, 0.844, 8.22)
+   ('Spaghetti 500g', 'Pasta Sauce 500g', 109, 11.66, 0.79, 0.879, 5.96)
+   ('Baking Paper 20m', 'Mixing Bowl Set 3pc', 21, 2.25, 0.276, 0.396, 4.87)
+   ('Shampoo 400ml', 'Deodorant 150ml', 21, 2.25, 0.219, 0.438, 4.26)
+   ('Conditioner 400ml', 'Deodorant 150ml', 19, 2.03, 0.211, 0.396, 4.11)
+   ('Conditioner 400ml', 'Toothpaste 110g', 29, 3.1, 0.322, 0.392, 4.07)
+
+=== Centrality graph: 40 nodes, 128 edges, 1 component(s)
+   product | degree | wDegree | pagerank-rank | betweenness | closeness | eigen-rank
+   Paper Towel 4pk               14   200  PR#3     254.66 0.527 EV#17
+   Olive Oil 1L                  11   189  PR#8     141.33 0.424 EV#11
+   Spaghetti 500g                12   298  PR#1     133.99 0.574 EV#1
+   Pasta Sauce 500g              12   272  PR#2     133.99 0.574 EV#2
+   Hand Soap 500ml               11   161  PR#18    122.10 0.481 EV#6
+   Dishwashing Liquid 1L          8   135  PR#12     71.13 0.433 EV#30
+   Cola 1.25L                    10   169  PR#13     68.30 0.470 EV#5
+   Conditioner 400ml              8   221  PR#4      64.90 0.419 EV#8
+   Instant Noodles 5pk           10   201  PR#6      57.63 0.464 EV#3
+   Tinned Tomatoes 400g          10   166  PR#14     47.72 0.487 EV#4
+   Shampoo 400ml                  8   216  PR#5      21.42 0.394 EV#7
+   Corn Chips 200g                8   182  PR#10     20.31 0.429 EV#10
+   top5 PageRank: ['Spaghetti 500g', 'Pasta Sauce 500g', 'Paper Towel 4pk', 'Conditioner 400ml', 'Shampoo 400ml']
+   top5 Weighted degree: ['Spaghetti 500g', 'Pasta Sauce 500g', 'Conditioner 400ml', 'Shampoo 400ml', 'Instant Noodles 5pk']
+   top5 Eigenvector: ['Spaghetti 500g', 'Pasta Sauce 500g', 'Instant Noodles 5pk', 'Tinned Tomatoes 400g', 'Cola 1.25L']
+   top5 Closeness: ['Spaghetti 500g', 'Pasta Sauce 500g', 'Paper Towel 4pk', 'Tinned Tomatoes 400g', 'Hand Soap 500ml']
+
+=== Similarity: 138 customers with purchases, 125 pass degreeCutoff 5
+   top pairs jaccard [(0.8, 'Zara Jones', 'George Nguyen', 14, 13), (0.8, 'Ximena Kelly', 'Oliver Costa', 13, 14), (0.778, 'Fatima Nguyen', 'Amir Hossain', 8, 8), (0.769, 'Fatima Kelly', 'Marco Rahman', 11, 12), (0.75, 'Rahul Garcia', 'George Murphy', 12, 16)]
+   top pairs overlap [(1.0, 'Zara Jones', 'Zara Nguyen', 14, 5), (1.0, 'Zara Jones', 'Uma Tran', 14, 6), (1.0, 'Zara Jones', 'Quinn Costa', 14, 8), (1.0, 'Yusuf Hossain', 'Uma Tran', 10, 6), (1.0, 'Yusuf Hossain', 'Daniela Garcia', 10, 5)]
+   top pairs cosine [(0.925, 'Fatima Nguyen', 'Amir Hossain', 8, 8), (0.919, 'Fatima Nguyen', 'Layla Jones', 8, 7), (0.896, 'Uma Tran', 'George Nguyen', 6, 13), (0.895, 'Layla Jones', 'Amir Hossain', 7, 8), (0.887, 'Bella Nguyen', 'Layla Jones', 5, 7)]
+   Anna Kowalski bought: ['Bin Liners 50pk', 'Bleach 2L', 'Cola 1.25L', 'Instant Noodles 5pk', 'Laundry Powder 2kg', 'Long Grain Rice 5kg', 'Multipurpose Spray 750ml', 'Paper Towel 4pk', 'Storage Container Set 5pc', 'Tinned Tomatoes 400g']
+   jaccard neighbours: [(0.583, 'Quinn Islam'), (0.462, 'Ethan Ali'), (0.429, 'Aisha Nguyen')]
+      recommendations: [('Hand Soap 500ml', 1.012), ('Spaghetti 500g', 0.891), ('Dishwashing Liquid 1L', 0.583), ('Chickpeas 400g', 0.462), ('Olive Oil 1L', 0.462)]
+   overlap neighbours: [(0.778, 'Quinn Islam'), (0.7, 'Kai Jones'), (0.7, 'Jasmine Singh')]
+      recommendations: [('Hand Soap 500ml', 1.478), ('Dishwashing Liquid 1L', 1.478), ('Spaghetti 500g', 1.4), ('Pasta Sauce 500g', 1.4), ('Scrub Sponges 6pk', 1.4)]
+   cosine neighbours: [(0.713, 'Mei Lin'), (0.708, 'Quinn Islam'), (0.637, 'Kai Jones')]
+      recommendations: [('Hand Soap 500ml', 2.058), ('Dishwashing Liquid 1L', 1.345), ('Shampoo 400ml', 0.713), ('Conditioner 400ml', 0.713), ('Salted Chips 175g', 0.713)]
+   Anna Kowalski category mix: [0.371, 0.019, 0.465, 0.145, 0.0]
+   KNN cosine neighbours: [(0.9665, 'Sofia Ali', [0.38, 0.03, 0.55, 0.0, 0.05]), (0.9598, 'Kai Jones', [0.35, 0.06, 0.52, 0.0, 0.07]), (0.9542, 'Chen Rahman', [0.29, 0.02, 0.56, 0.04, 0.09])]

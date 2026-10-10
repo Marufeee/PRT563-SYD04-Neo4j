@@ -1,0 +1,387 @@
+// =====================================================================
+// PRT563 Assessment 4 - Sydney Group 04
+// Task 2: Migrating the retail inventory database from SQLite to Neo4j
+// File: import.txt
+//
+// Target: Neo4j 5.x (Neo4j Desktop or AuraDB) - Graph Data Science 2.x
+// Source: one CSV per relational table, exported from retail_inventory_v2.db
+// Before running: copy every file in /csv into the database's "import"
+// folder (Neo4j Desktop: ... > Open folder > Import). Run the statements
+// below in order, one block at a time, in Neo4j Browser.
+//
+// LOAD CSV reads empty fields as null, so optional foreign keys
+// (sale.customer_id, customer.home_store_id, etc.) are filtered with
+// IS NOT NULL before the MATCH that creates the relationship.
+// MERGE is used throughout so the whole script is safe to re-run.
+// =====================================================================
+
+
+// ---------------------------------------------------------------------
+// STEP 0 (optional): reset the database
+// ---------------------------------------------------------------------
+MATCH (n) DETACH DELETE n;
+
+
+// ---------------------------------------------------------------------
+// STEP 1: Uniqueness constraints
+// Each relational primary key and candidate key becomes a uniqueness
+// constraint. Neo4j backs every constraint with a range index, so these
+// also make the MATCH lookups in steps 3-5 index seeks, not label scans.
+// ---------------------------------------------------------------------
+CREATE CONSTRAINT category_id      IF NOT EXISTS FOR (n:Category)        REQUIRE n.categoryId    IS UNIQUE;
+CREATE CONSTRAINT category_name    IF NOT EXISTS FOR (n:Category)        REQUIRE n.name          IS UNIQUE;
+CREATE CONSTRAINT product_id       IF NOT EXISTS FOR (n:Product)         REQUIRE n.productId     IS UNIQUE;
+CREATE CONSTRAINT product_sku      IF NOT EXISTS FOR (n:Product)         REQUIRE n.sku           IS UNIQUE;
+CREATE CONSTRAINT supplier_id      IF NOT EXISTS FOR (n:Supplier)        REQUIRE n.supplierId    IS UNIQUE;
+CREATE CONSTRAINT supplier_abn     IF NOT EXISTS FOR (n:Supplier)        REQUIRE n.abn           IS UNIQUE;
+CREATE CONSTRAINT supply_source_id IF NOT EXISTS FOR (n:SupplySource)    REQUIRE n.sourceId      IS UNIQUE;
+CREATE CONSTRAINT location_id      IF NOT EXISTS FOR (n:Location)        REQUIRE n.locationId    IS UNIQUE;
+CREATE CONSTRAINT location_code    IF NOT EXISTS FOR (n:Location)        REQUIRE n.code          IS UNIQUE;
+CREATE CONSTRAINT employee_id      IF NOT EXISTS FOR (n:Employee)        REQUIRE n.employeeId    IS UNIQUE;
+CREATE CONSTRAINT employee_email   IF NOT EXISTS FOR (n:Employee)        REQUIRE n.email         IS UNIQUE;
+CREATE CONSTRAINT customer_id      IF NOT EXISTS FOR (n:Customer)        REQUIRE n.customerId    IS UNIQUE;
+CREATE CONSTRAINT agreement_id     IF NOT EXISTS FOR (n:SupplyAgreement) REQUIRE n.agreementId   IS UNIQUE;
+CREATE CONSTRAINT po_id            IF NOT EXISTS FOR (n:PurchaseOrder)   REQUIRE n.poId          IS UNIQUE;
+CREATE CONSTRAINT po_number        IF NOT EXISTS FOR (n:PurchaseOrder)   REQUIRE n.poNumber      IS UNIQUE;
+CREATE CONSTRAINT delivery_id      IF NOT EXISTS FOR (n:Delivery)        REQUIRE n.deliveryId    IS UNIQUE;
+CREATE CONSTRAINT delivery_ref     IF NOT EXISTS FOR (n:Delivery)        REQUIRE n.referenceNo   IS UNIQUE;
+CREATE CONSTRAINT adjustment_id    IF NOT EXISTS FOR (n:StockAdjustment) REQUIRE n.adjustmentId  IS UNIQUE;
+CREATE CONSTRAINT sale_id          IF NOT EXISTS FOR (n:Sale)            REQUIRE n.saleId        IS UNIQUE;
+CREATE CONSTRAINT sale_receipt     IF NOT EXISTS FOR (n:Sale)            REQUIRE n.receiptNo     IS UNIQUE;
+
+
+// ---------------------------------------------------------------------
+// STEP 2: Additional indexes
+// For properties that queries filter or sort on but that are not keys.
+// ---------------------------------------------------------------------
+// Range index: date-range filters on sales (queries 2 and 4, GDS projections)
+CREATE INDEX sale_datetime   IF NOT EXISTS FOR (n:Sale)          ON (n.saleDatetime);
+// Range index: purchase-order status filter (query 3)
+CREATE INDEX po_status       IF NOT EXISTS FOR (n:PurchaseOrder) ON (n.status);
+// Range index: loyalty-tier segmentation of customers
+CREATE INDEX customer_tier   IF NOT EXISTS FOR (n:Customer)      ON (n.loyaltyTier);
+// Text index: CONTAINS / ENDS WITH searches on product names
+CREATE TEXT INDEX product_name_text IF NOT EXISTS FOR (n:Product) ON (n.name);
+// Relationship property index: stock levels live on the STOCKS relationship
+CREATE INDEX stocks_on_hand  IF NOT EXISTS FOR ()-[r:STOCKS]-()  ON (r.qtyOnHand);
+
+CALL db.awaitIndexes(300);
+SHOW INDEXES;
+
+
+// ---------------------------------------------------------------------
+// STEP 3: Nodes for the reference data
+// ---------------------------------------------------------------------
+
+// 3.1 PRODUCT_CATEGORY -> (:Category)
+LOAD CSV WITH HEADERS FROM 'file:///product_category.csv' AS row
+MERGE (c:Category {categoryId: toInteger(row.category_id)})
+SET c.name = row.category_name;
+
+// 3.2 PRODUCT -> (:Product)
+LOAD CSV WITH HEADERS FROM 'file:///product.csv' AS row
+MERGE (p:Product {productId: toInteger(row.product_id)})
+SET p.sku           = row.sku,
+    p.name          = row.product_name,
+    p.description   = row.description,
+    p.unitOfMeasure = row.unit_of_measure,
+    p.retailPrice   = toFloat(row.retail_price),
+    p.isActive      = (row.is_active = '1');
+
+// 3.3 SUPPLIER -> (:Supplier:SupplySource)
+// The SUPPLY_SOURCE category (union type) becomes a shared label.
+LOAD CSV WITH HEADERS FROM 'file:///supplier.csv' AS row
+MERGE (s:Supplier {supplierId: toInteger(row.supplier_id)})
+SET s:SupplySource,
+    s.sourceId         = toInteger(row.source_id),
+    s.name             = row.supplier_name,
+    s.abn              = row.abn,
+    s.contactEmail     = row.contact_email,
+    s.street           = row.street,
+    s.suburb           = row.suburb,
+    s.state            = row.state,
+    s.postcode         = row.postcode,
+    s.paymentTermsDays = toInteger(row.payment_terms_days);
+
+// 3.4 SUPPLIER_PHONE -> list properties on (:Supplier)
+// The multivalued attribute returns to the entity as two parallel lists.
+LOAD CSV WITH HEADERS FROM 'file:///supplier_phone.csv' AS row
+WITH toInteger(row.supplier_id) AS supplierId,
+     collect(row.phone_number) AS numbers,
+     collect(coalesce(row.phone_type, 'UNSPECIFIED')) AS types
+MATCH (s:Supplier {supplierId: supplierId})
+SET s.phoneNumbers = numbers,
+    s.phoneTypes   = types;
+
+// 3.5 LOCATION -> (:Location)
+LOAD CSV WITH HEADERS FROM 'file:///location.csv' AS row
+MERGE (l:Location {locationId: toInteger(row.location_id)})
+SET l.code         = row.location_code,
+    l.name         = row.location_name,
+    l.street       = row.street,
+    l.suburb       = row.suburb,
+    l.state        = row.state,
+    l.postcode     = row.postcode,
+    l.openedDate   = date(row.opened_date),
+    l.locationType = row.location_type;
+
+// 3.6 STORE -> adds the :Store label and subclass properties
+LOAD CSV WITH HEADERS FROM 'file:///store.csv' AS row
+MATCH (l:Location {locationId: toInteger(row.location_id)})
+SET l:Store,
+    l.region       = row.region,
+    l.floorAreaSqm = toFloat(row.floor_area_sqm),
+    l.tradingHours = row.trading_hours;
+
+// 3.7 WAREHOUSE -> adds :Warehouse, and :SupplySource (category member)
+LOAD CSV WITH HEADERS FROM 'file:///warehouse.csv' AS row
+MATCH (l:Location {locationId: toInteger(row.location_id)})
+SET l:Warehouse:SupplySource,
+    l.sourceId               = toInteger(row.source_id),
+    l.storageCapacityPallets = toInteger(row.storage_capacity_pallets),
+    l.hasColdStorage         = (row.has_cold_storage = '1');
+
+// 3.8 SUPPLY_SOURCE -> sourceType on whichever node carries that sourceId
+LOAD CSV WITH HEADERS FROM 'file:///supply_source.csv' AS row
+MATCH (s:SupplySource {sourceId: toInteger(row.source_id)})
+SET s.sourceType = row.source_type;
+
+// 3.9 EMPLOYEE -> (:Employee)
+LOAD CSV WITH HEADERS FROM 'file:///employee.csv' AS row
+MERGE (e:Employee {employeeId: toInteger(row.employee_id)})
+SET e.firstName      = row.first_name,
+    e.lastName       = row.last_name,
+    e.email          = row.email,
+    e.hireDate       = date(row.hire_date),
+    e.employmentType = row.employment_type,
+    e.jobRole        = row.job_role;
+
+// 3.10 MANAGER -> adds the :Manager label
+LOAD CSV WITH HEADERS FROM 'file:///manager.csv' AS row
+MATCH (e:Employee {employeeId: toInteger(row.employee_id)})
+SET e:Manager,
+    e.budgetAuthorityAud = toFloat(row.budget_authority_aud),
+    e.managedSince       = date(row.managed_since);
+
+// 3.11 SALES_ASSISTANT -> adds the :SalesAssistant label
+LOAD CSV WITH HEADERS FROM 'file:///sales_assistant.csv' AS row
+MATCH (e:Employee {employeeId: toInteger(row.employee_id)})
+SET e:SalesAssistant,
+    e.posOperatorCode = row.pos_operator_code,
+    e.commissionRate  = toFloat(row.commission_rate);
+
+// 3.12 WAREHOUSE_OPERATOR -> adds the :WarehouseOperator label
+LOAD CSV WITH HEADERS FROM 'file:///warehouse_operator.csv' AS row
+MATCH (e:Employee {employeeId: toInteger(row.employee_id)})
+SET e:WarehouseOperator,
+    e.forkliftLicenceNo = row.forklift_licence_no,
+    e.licenceExpiry     = date(row.licence_expiry);
+
+// 3.13 CUSTOMER -> (:Customer)
+LOAD CSV WITH HEADERS FROM 'file:///customer.csv' AS row
+MERGE (c:Customer {customerId: toInteger(row.customer_id)})
+SET c.firstName   = row.first_name,
+    c.lastName    = row.last_name,
+    c.email       = row.email,
+    c.phone       = row.phone,
+    c.joinDate    = date(row.join_date),
+    c.loyaltyTier = row.loyalty_tier;
+
+
+// ---------------------------------------------------------------------
+// STEP 4: Relationships from foreign keys on the reference data
+// ---------------------------------------------------------------------
+
+// 4.1 PRODUCT_CATEGORY.parent_category_id -> [:SUBCATEGORY_OF] (recursive)
+LOAD CSV WITH HEADERS FROM 'file:///product_category.csv' AS row
+WITH row WHERE row.parent_category_id IS NOT NULL
+MATCH (child:Category  {categoryId: toInteger(row.category_id)})
+MATCH (parent:Category {categoryId: toInteger(row.parent_category_id)})
+MERGE (child)-[:SUBCATEGORY_OF]->(parent);
+
+// 4.2 PRODUCT.category_id -> [:IN_CATEGORY]
+LOAD CSV WITH HEADERS FROM 'file:///product.csv' AS row
+MATCH (p:Product  {productId:  toInteger(row.product_id)})
+MATCH (c:Category {categoryId: toInteger(row.category_id)})
+MERGE (p)-[:IN_CATEGORY]->(c);
+
+// 4.3 EMPLOYEE.location_id -> [:WORKS_AT]
+LOAD CSV WITH HEADERS FROM 'file:///employee.csv' AS row
+MATCH (e:Employee {employeeId: toInteger(row.employee_id)})
+MATCH (l:Location {locationId: toInteger(row.location_id)})
+MERGE (e)-[:WORKS_AT]->(l);
+
+// 4.4 EMPLOYEE.supervisor_id -> [:REPORTS_TO] (recursive)
+LOAD CSV WITH HEADERS FROM 'file:///employee.csv' AS row
+WITH row WHERE row.supervisor_id IS NOT NULL
+MATCH (e:Employee   {employeeId: toInteger(row.employee_id)})
+MATCH (sup:Employee {employeeId: toInteger(row.supervisor_id)})
+MERGE (e)-[:REPORTS_TO]->(sup);
+
+// 4.5 CUSTOMER.home_store_id -> [:HOME_STORE] (optional)
+LOAD CSV WITH HEADERS FROM 'file:///customer.csv' AS row
+WITH row WHERE row.home_store_id IS NOT NULL
+MATCH (c:Customer {customerId: toInteger(row.customer_id)})
+MATCH (s:Store    {locationId: toInteger(row.home_store_id)})
+MERGE (c)-[:HOME_STORE]->(s);
+
+// 4.6 SUPPLY_AGREEMENT -> (:SupplyAgreement) node, the reified aggregation
+// (:Supplier)-[:OFFERS]->(:SupplyAgreement)-[:FOR_PRODUCT]->(:Product)
+LOAD CSV WITH HEADERS FROM 'file:///supply_agreement.csv' AS row
+MATCH (s:Supplier {supplierId: toInteger(row.supplier_id)})
+MATCH (p:Product  {productId:  toInteger(row.product_id)})
+MERGE (a:SupplyAgreement {agreementId: toInteger(row.agreement_id)})
+SET a.supplyPrice  = toFloat(row.supply_price),
+    a.leadTimeDays = toInteger(row.lead_time_days),
+    a.minOrderQty  = toInteger(row.min_order_qty),
+    a.isPreferred  = (row.is_preferred = '1')
+MERGE (s)-[:OFFERS]->(a)
+MERGE (a)-[:FOR_PRODUCT]->(p);
+
+// 4.7 STOCK_ITEM -> [:STOCKS] relationship carrying the stock position
+LOAD CSV WITH HEADERS FROM 'file:///stock_item.csv' AS row
+MATCH (l:Location {locationId: toInteger(row.location_id)})
+MATCH (p:Product  {productId:  toInteger(row.product_id)})
+MERGE (l)-[s:STOCKS]->(p)
+SET s.qtyOnHand       = toInteger(row.qty_on_hand),
+    s.qtyReserved     = toInteger(row.qty_reserved),
+    s.reorderLevel    = toInteger(row.reorder_level),
+    s.reorderQty      = toInteger(row.reorder_qty),
+    s.binCode         = row.bin_code,
+    s.lastCountedDate = date(row.last_counted_date);
+
+
+// ---------------------------------------------------------------------
+// STEP 5: Transaction nodes and their relationships
+// ---------------------------------------------------------------------
+
+// 5.1 PURCHASE_ORDER -> (:PurchaseOrder) + PLACED_WITH, DELIVER_TO, RAISED_BY
+LOAD CSV WITH HEADERS FROM 'file:///purchase_order.csv' AS row
+MATCH (s:Supplier {supplierId: toInteger(row.supplier_id)})
+MATCH (l:Location {locationId: toInteger(row.deliver_to_location_id)})
+MATCH (e:Employee {employeeId: toInteger(row.ordered_by_employee_id)})
+MERGE (po:PurchaseOrder {poId: toInteger(row.po_id)})
+SET po.poNumber     = row.po_number,
+    po.orderDate    = date(row.order_date),
+    po.expectedDate = date(row.expected_date),
+    po.status       = row.po_status
+MERGE (po)-[:PLACED_WITH]->(s)
+MERGE (po)-[:DELIVER_TO]->(l)
+MERGE (po)-[:RAISED_BY]->(e);
+
+// 5.2 PURCHASE_ORDER_LINE (weak entity) -> [:ORDERS] relationship
+// Points at the SupplyAgreement, which preserves business rule BR9.
+LOAD CSV WITH HEADERS FROM 'file:///purchase_order_line.csv' AS row
+MATCH (po:PurchaseOrder  {poId:        toInteger(row.po_id)})
+MATCH (a:SupplyAgreement {agreementId: toInteger(row.agreement_id)})
+MERGE (po)-[o:ORDERS {lineNo: toInteger(row.line_no)}]->(a)
+SET o.qtyOrdered  = toInteger(row.qty_ordered),
+    o.qtyReceived = toInteger(row.qty_received),
+    o.unitCost    = toFloat(row.unit_cost);
+
+// 5.3 INBOUND_DELIVERY -> (:Delivery) + SENT_FROM, RECEIVED_AT, CHECKED_BY
+// SENT_FROM targets the :SupplySource label, so one relationship type
+// covers both external suppliers and internal warehouse transfers.
+LOAD CSV WITH HEADERS FROM 'file:///inbound_delivery.csv' AS row
+MATCH (src:SupplySource {sourceId:   toInteger(row.source_id)})
+MATCH (l:Location       {locationId: toInteger(row.to_location_id)})
+MATCH (e:Employee       {employeeId: toInteger(row.received_by_employee_id)})
+MERGE (d:Delivery {deliveryId: toInteger(row.delivery_id)})
+SET d.referenceNo  = row.reference_no,
+    d.deliveryDate = date(row.delivery_date)
+MERGE (d)-[:SENT_FROM]->(src)
+MERGE (d)-[:RECEIVED_AT]->(l)
+MERGE (d)-[:CHECKED_BY]->(e);
+
+// 5.4 INBOUND_DELIVERY.po_id -> [:FULFILS] (optional)
+LOAD CSV WITH HEADERS FROM 'file:///inbound_delivery.csv' AS row
+WITH row WHERE row.po_id IS NOT NULL
+MATCH (d:Delivery       {deliveryId: toInteger(row.delivery_id)})
+MATCH (po:PurchaseOrder {poId:       toInteger(row.po_id)})
+MERGE (d)-[:FULFILS]->(po);
+
+// 5.5 DELIVERY_LINE (weak entity) -> [:DELIVERED] relationship
+LOAD CSV WITH HEADERS FROM 'file:///delivery_line.csv' AS row
+MATCH (d:Delivery {deliveryId: toInteger(row.delivery_id)})
+MATCH (p:Product  {productId:  toInteger(row.product_id)})
+MERGE (d)-[r:DELIVERED {lineNo: toInteger(row.line_no)}]->(p)
+SET r.qtyDelivered = toInteger(row.qty_delivered),
+    r.qtyDamaged   = toInteger(row.qty_damaged);
+
+// 5.6 STOCK_ADJUSTMENT -> (:StockAdjustment) + AT_LOCATION, ADJUSTS, MADE_BY
+LOAD CSV WITH HEADERS FROM 'file:///stock_adjustment.csv' AS row
+MATCH (l:Location {locationId: toInteger(row.location_id)})
+MATCH (p:Product  {productId:  toInteger(row.product_id)})
+MATCH (e:Employee {employeeId: toInteger(row.adjusted_by_employee_id)})
+MERGE (a:StockAdjustment {adjustmentId: toInteger(row.adjustment_id)})
+SET a.adjustmentDate = date(row.adjustment_date),
+    a.adjustmentType = row.adjustment_type,
+    a.qtyChange      = toInteger(row.qty_change),
+    a.note           = row.note
+MERGE (a)-[:AT_LOCATION]->(l)
+MERGE (a)-[:ADJUSTS]->(p)
+MERGE (a)-[:MADE_BY]->(e);
+
+// 5.7 SALE -> (:Sale) + SOLD_AT, SERVED_BY
+// SERVED_BY can only match a :SalesAssistant node, which keeps BR19.
+LOAD CSV WITH HEADERS FROM 'file:///sale.csv' AS row
+MATCH (st:Store          {locationId: toInteger(row.store_id)})
+MATCH (sa:SalesAssistant {employeeId: toInteger(row.sales_assistant_id)})
+MERGE (s:Sale {saleId: toInteger(row.sale_id)})
+SET s.receiptNo     = row.receipt_no,
+    s.saleDatetime  = localdatetime(replace(row.sale_datetime, ' ', 'T')),
+    s.paymentMethod = row.payment_method
+MERGE (s)-[:SOLD_AT]->(st)
+MERGE (s)-[:SERVED_BY]->(sa);
+
+// 5.8 SALE.customer_id -> [:MADE] (optional: walk-in sales have no customer)
+LOAD CSV WITH HEADERS FROM 'file:///sale.csv' AS row
+WITH row WHERE row.customer_id IS NOT NULL
+MATCH (c:Customer {customerId: toInteger(row.customer_id)})
+MATCH (s:Sale     {saleId:     toInteger(row.sale_id)})
+MERGE (c)-[:MADE]->(s);
+
+// 5.9 SALE_LINE (weak entity) -> [:CONTAINS] relationship
+LOAD CSV WITH HEADERS FROM 'file:///sale_line.csv' AS row
+MATCH (s:Sale    {saleId:    toInteger(row.sale_id)})
+MATCH (p:Product {productId: toInteger(row.product_id)})
+MERGE (s)-[l:CONTAINS {lineNo: toInteger(row.line_no)}]->(p)
+SET l.qtySold     = toInteger(row.qty_sold),
+    l.unitPrice   = toFloat(row.unit_price),
+    l.discountPct = toFloat(row.discount_pct);
+
+
+// ---------------------------------------------------------------------
+// STEP 6: Verify the migration
+// Expected counts are in README.md (one per CSV row / foreign key).
+// ---------------------------------------------------------------------
+
+// 6.1 Nodes per label (a node with two labels is counted under both)
+MATCH (n)
+UNWIND labels(n) AS label
+RETURN label, count(*) AS nodes
+ORDER BY label;
+
+// 6.2 Relationships per type
+MATCH ()-[r]->()
+RETURN type(r) AS relationshipType, count(*) AS rels
+ORDER BY relationshipType;
+
+// 6.3 Integrity check: every stock adjustment refers to an existing stock
+// position (the composite foreign key on STOCK_ADJUSTMENT). Expect 0 rows.
+MATCH (a:StockAdjustment)-[:AT_LOCATION]->(l:Location),
+      (a)-[:ADJUSTS]->(p:Product)
+WHERE NOT (l)-[:STOCKS]->(p)
+RETURN a.adjustmentId;
+
+// 6.4 Parity check against Assessment 2, use case 3 (August trading by
+// store and category). Must return the same 7 rows as the SQL version.
+MATCH (st:Store)<-[:SOLD_AT]-(s:Sale)-[l:CONTAINS]->(p:Product)-[:IN_CATEGORY]->(c:Category)
+WHERE s.saleDatetime >= localdatetime('2026-08-01T00:00')
+  AND s.saleDatetime <  localdatetime('2026-09-01T00:00')
+WITH st, c, count(DISTINCT s) AS transactions, sum(l.qtySold) AS unitsSold,
+     round(sum(l.qtySold * l.unitPrice * (1 - l.discountPct)), 2) AS revenueAud
+WHERE unitsSold > 5
+RETURN st.name AS store, st.region AS region, c.name AS category,
+       transactions, unitsSold, revenueAud
+ORDER BY revenueAud DESC;
