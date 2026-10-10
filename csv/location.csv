@@ -1,0 +1,5 @@
+location_id,location_code,location_name,street,suburb,state,postcode,opened_date,location_type
+1,WH-SYD,Sydney Distribution Centre,3 Cowpasture Road,Wetherill Park,NSW,2164,2018-02-05,WAREHOUSE
+2,ST-BKT,Bankstown Store,410 Chapel Road,Bankstown,NSW,2200,2018-06-18,STORE
+3,ST-LVP,Liverpool Store,22 Macquarie Street,Liverpool,NSW,2170,2020-03-02,STORE
+4,ST-PAR,Parramatta Store,155 Church Street,Parramatta,NSW,2150,2022-09-12,STORE

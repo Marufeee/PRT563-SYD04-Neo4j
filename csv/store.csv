@@ -1,0 +1,4 @@
+location_id,region,floor_area_sqm,trading_hours
+2,South West Sydney,620.0,Mon-Sat 09:00-18:00; Sun 10:00-16:00
+3,South West Sydney,540.5,Mon-Sat 09:00-18:00; Sun 10:00-16:00
+4,Western Sydney,710.0,Mon-Fri 09:00-19:00; Sat-Sun 09:00-17:00

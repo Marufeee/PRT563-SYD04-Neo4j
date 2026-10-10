@@ -1,0 +1,6 @@
+supplier_id,source_id,supplier_name,abn,contact_email,street,suburb,state,postcode,payment_terms_days
+1,2,Harbour Food Wholesale Pty Ltd,51824753556,orders@harbourfood.example,12 Wharf Road,Silverwater,NSW,2128,30
+2,3,Bright Home Supplies Pty Ltd,64111222333,sales@brighthome.example,8 Anzac Avenue,Smithfield,NSW,2164,45
+3,4,Kitchen Essentials Australia,72455666777,accounts@kitchenes.example,204 Bridge Street,Rydalmere,NSW,2116,30
+4,5,PureCare Personal Products,38909111222,supply@purecare.example,55 Nurigong Street,Albury,NSW,2640,60
+5,6,Metro Grocery Distributors,83222444666,trade@metrogrocery.example,71 Hume Highway,Chullora,NSW,2190,21

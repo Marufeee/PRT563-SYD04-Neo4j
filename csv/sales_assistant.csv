@@ -1,0 +1,7 @@
+employee_id,pos_operator_code,commission_rate
+5,POS-BKT-01,0.01
+6,POS-BKT-02,0.01
+8,POS-LVP-01,0.012
+9,POS-LVP-02,0.012
+11,POS-PAR-01,0.015
+12,POS-PAR-02,0.015

@@ -1,0 +1,14 @@
+adjustment_id,location_id,product_id,adjustment_date,adjustment_type,qty_change,adjusted_by_employee_id,note
+1,2,4,2026-08-06,DAMAGE,-3,4,Crushed cartons found in transit
+2,3,12,2026-08-08,STOCKTAKE,-4,7,Cycle count variance
+3,4,8,2026-08-11,DAMAGE,-1,10,Dented display unit written off
+4,2,5,2026-08-14,EXPIRY,-6,4,Past best-before date
+5,3,2,2026-08-16,THEFT,-5,7,Shrinkage reported to area manager
+6,4,9,2026-08-19,RETURN,2,11,"Customer return, resaleable condition"
+7,1,12,2026-08-20,STOCKTAKE,12,2,Pallet located in overflow bay
+8,2,12,2026-08-23,DAMAGE,-2,5,Punctured tins
+9,3,4,2026-08-25,STOCKTAKE,-3,8,Cycle count variance
+10,2,14,2026-09-05,DAMAGE,-2,5,Cracked jars
+11,3,21,2026-09-12,THEFT,-3,7,Shrinkage at front counter
+12,4,29,2026-09-18,EXPIRY,-4,10,Past use-by date
+13,1,26,2026-09-26,STOCKTAKE,6,2,Recount of overflow bay

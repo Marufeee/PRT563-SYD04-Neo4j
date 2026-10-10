@@ -1,0 +1,41 @@
+product_id,sku,product_name,description,unit_of_measure,category_id,retail_price,is_active
+1,GRO-1001,Long Grain Rice 5kg,Value pack white rice,BAG,4,12.5,1
+2,GRO-1002,Instant Noodles 5pk,Chicken flavour multipack,PACK,4,3.95,1
+3,GRO-1003,Olive Oil 1L,Blended olive oil,EACH,4,9.8,1
+4,SNK-2001,Salted Chips 175g,Original salted potato chips,EACH,5,2.75,1
+5,SNK-2002,Choc Biscuits 250g,Milk chocolate coated biscuits,EACH,5,3.4,1
+6,CLN-3001,Multipurpose Spray 750ml,Household surface cleaner,EACH,6,4.6,1
+7,CLN-3002,Laundry Powder 2kg,Front and top loader powder,BOX,6,11.9,1
+8,KIT-4001,Non-stick Frypan 24cm,Aluminium non-stick frypan,EACH,7,19.5,1
+9,KIT-4002,Storage Container Set 5pc,BPA-free food storage set,SET,7,8.25,1
+10,HAI-5001,Shampoo 400ml,Daily care shampoo,EACH,8,5.7,1
+11,HAI-5002,Conditioner 400ml,Daily care conditioner,EACH,8,5.7,1
+12,GRO-1004,Tinned Tomatoes 400g,Diced tomatoes in juice,CAN,4,1.35,1
+13,GRO-1005,Spaghetti 500g,Durum wheat spaghetti,EACH,4,1.6,1
+14,GRO-1006,Pasta Sauce 500g,Tomato and basil sauce,JAR,4,2.9,1
+15,GRO-1007,Plain Flour 2kg,All-purpose plain flour,BAG,4,3.2,1
+16,GRO-1008,White Sugar 2kg,Granulated white sugar,BAG,4,3.5,1
+17,GRO-1009,Red Lentils 1kg,Split red lentils,BAG,4,4.2,1
+18,GRO-1010,Basmati Rice 2kg,Aged basmati rice,BAG,4,7.9,1
+19,GRO-1011,Chickpeas 400g,Chickpeas in brine,CAN,4,1.1,1
+20,GRO-1012,Coconut Milk 400ml,Full-cream coconut milk,CAN,4,1.8,1
+21,SNK-2003,Cola 1.25L,Cola soft drink,BOTTLE,5,2.2,1
+22,SNK-2004,Milk Chocolate Bar 180g,Block of milk chocolate,EACH,5,4.5,1
+23,SNK-2005,Microwave Popcorn 3pk,Butter flavour popcorn,PACK,5,3.0,1
+24,SNK-2006,Corn Chips 200g,Lightly salted corn chips,EACH,5,3.1,1
+25,SNK-2007,Salsa Dip 300g,Medium tomato salsa,JAR,5,3.6,1
+26,CLN-3003,Dishwashing Liquid 1L,Lemon dishwashing liquid,BOTTLE,6,3.3,1
+27,CLN-3004,Paper Towel 4pk,Two-ply paper towel,PACK,6,5.5,1
+28,CLN-3005,Bin Liners 50pk,Kitchen tidy bin liners,PACK,6,4.0,1
+29,CLN-3006,Bleach 2L,Regular household bleach,BOTTLE,6,3.8,1
+30,CLN-3007,Scrub Sponges 6pk,Non-scratch scrub sponges,PACK,6,2.6,1
+31,KIT-4003,Aluminium Foil 30m,Heavy duty foil roll,ROLL,7,4.4,1
+32,KIT-4004,Cling Wrap 60m,Food wrap film,ROLL,7,3.2,1
+33,KIT-4005,Baking Paper 20m,Non-stick baking paper,ROLL,7,3.7,1
+34,KIT-4006,Mixing Bowl Set 3pc,Stainless steel bowls,SET,7,14.9,1
+35,HAI-5003,Body Wash 1L,Moisturising body wash,BOTTLE,8,6.5,1
+36,HAI-5004,Toothpaste 110g,Fluoride toothpaste,EACH,8,2.8,1
+37,HAI-5005,Deodorant 150ml,48h antiperspirant spray,EACH,8,4.9,1
+38,HAI-5006,Hair Gel 150ml,Strong hold hair gel,EACH,8,4.2,1
+39,HAI-5007,Toothbrush 2pk,Medium bristle toothbrush,PACK,8,3.4,1
+40,HAI-5008,Hand Soap 500ml,Antibacterial hand wash,BOTTLE,8,3.9,1
